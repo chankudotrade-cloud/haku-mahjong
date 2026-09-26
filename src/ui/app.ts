@@ -9,6 +9,8 @@ import { renderReviewView } from './reviewView';
 
 /** こちらが捨ててから相手が捨てるまでのウェイト（ms） */
 const OPPONENT_DELAY = 500;
+/** 相手が捨ててから（リーチ後はスルーしてから）自分のツモ牌を見せるまでのウェイト（ms） */
+const DRAW_DELAY = 300;
 const WARNING_MS = 1400;
 
 export class App {
@@ -19,6 +21,9 @@ export class App {
   private timer: { deadline: number; total: number; label: string } | null = null;
   private tickId: number | null = null;
   private oppId: number | null = null;
+  private drawId: number | null = null;
+  /** ツモ牌をまだ見せていない（相手が捨てた直後の DRAW_DELAY の間） */
+  private concealDraw = false;
   private warnId: number | null = null;
 
   constructor(private readonly root: HTMLElement) {}
@@ -30,9 +35,12 @@ export class App {
   private clearTimers(): void {
     if (this.tickId !== null) clearInterval(this.tickId);
     if (this.oppId !== null) clearTimeout(this.oppId);
+    if (this.drawId !== null) clearTimeout(this.drawId);
     this.tickId = null;
     this.oppId = null;
+    this.drawId = null;
     this.timer = null;
+    this.concealDraw = false;
   }
 
   private mount(el: HTMLElement): void {
@@ -69,8 +77,11 @@ export class App {
     this.enterPhase();
   }
 
-  /** 局面が変わるたびに呼ぶ：タイマーの張り直しと描画 */
-  private enterPhase(): void {
+  /**
+   * 局面が変わるたびに呼ぶ：タイマーの張り直しと描画。
+   * afterOpponent：相手が捨てた直後（リーチ後はスルー直後）なら、ツモ牌を DRAW_DELAY 遅らせて見せる
+   */
+  private enterPhase(afterOpponent = false): void {
     this.clearTimers();
     const g = this.game!;
     if (g.phase === 'ended') {
@@ -84,8 +95,16 @@ export class App {
       this.renderGame();
       this.oppId = window.setTimeout(() => {
         g.advanceOpponent();
-        this.enterPhase();
+        this.enterPhase(true);
       }, OPPONENT_DELAY);
+      return;
+    }
+    const drawn = g.phase === 'playerDiscard' || g.phase === 'playerDecision';
+    if (afterOpponent && drawn) {
+      // ツモ牌を隠して描画し、少し待ってから見せる（打牌タイマーはツモ牌を見せてから）
+      this.concealDraw = true;
+      this.renderGame();
+      this.drawId = window.setTimeout(() => this.enterPhase(), DRAW_DELAY);
       return;
     }
     const isDiscard = g.phase === 'playerDiscard';
@@ -105,8 +124,9 @@ export class App {
     if (!t) return;
     if (t.remaining <= 0) {
       this.clearTimers();
+      const wasRon = this.game!.phase === 'ronDecision';
       this.game!.timeout();
-      this.enterPhase();
+      this.enterPhase(wasRon);
       return;
     }
     updateTimerEl(this.root, t);
@@ -130,9 +150,10 @@ export class App {
     this.mount(
       renderGameView(
         g,
-        { warning: this.warning, timer: this.timerState() },
+        { warning: this.warning, timer: this.timerState(), concealDraw: this.concealDraw },
         {
           onTileTap: (i) => {
+            if (this.concealDraw) return;
             const tile = g.hand[i];
             if (!tile) return;
             const res = g.discard(tile.id);
@@ -150,13 +171,14 @@ export class App {
             this.renderGame();
           },
           onRiichiToggle: () => {
+            if (this.concealDraw) return;
             g.setRiichiMode(!g.riichiMode);
             this.renderGame();
           },
           onRon: () => g.declareRon() && this.enterPhase(),
-          onPass: () => g.pass() && this.enterPhase(),
-          onTsumo: () => g.declareTsumo() && this.enterPhase(),
-          onTsumogiri: () => g.tsumogiri() && this.enterPhase(),
+          onPass: () => g.pass() && this.enterPhase(true),
+          onTsumo: () => !this.concealDraw && g.declareTsumo() && this.enterPhase(),
+          onTsumogiri: () => !this.concealDraw && g.tsumogiri() && this.enterPhase(),
           onQuit: () => {
             if (confirm('この局を中断してタイトルに戻りますか？（成績には記録しません）')) this.showOpening();
           },

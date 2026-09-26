@@ -164,3 +164,34 @@ describe('牌の数の選択', () => {
     expect(root.querySelector('.opp-hand')).toBeNull();
   });
 });
+
+describe('ツモ牌の表示タイミング', () => {
+  it('相手が捨ててから0.3秒後に自分のツモ牌が出る（それまでは打牌もリーチもできない）', async () => {
+    const { mulberry32 } = await import('../core/tiles');
+    vi.spyOn(Math, 'random').mockImplementation(mulberry32(11));
+    const root = document.createElement('div');
+    new App(root).start();
+    click(root.querySelector('.btn-start'));
+    // 左端の白以外の牌を切る
+    const first = [...root.querySelectorAll<HTMLElement>('[data-hand-index]')].find((t) => !t.classList.contains('haku'))!;
+    first.dispatchEvent(new PointerEvent('pointerdown', { bubbles: true, button: 0, clientX: 0, clientY: 0 }));
+    first.dispatchEvent(new PointerEvent('pointerup', { bubbles: true, button: 0, clientX: 0, clientY: 0 }));
+    expect(root.querySelector('.end')).toBeNull();
+    expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(7);
+
+    vi.advanceTimersByTime(500); // 相手が捨てる
+    expect(root.querySelectorAll('.opp-river .tile')).toHaveLength(1);
+    expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(7); // まだツモ牌は出ない
+    expect(root.querySelector('[data-action="riichi"]')).toBeNull();
+    expect(root.querySelector('.timer.idle')).not.toBeNull();
+
+    vi.advanceTimersByTime(250);
+    expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(7);
+
+    vi.advanceTimersByTime(60); // 0.3秒たった
+    expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(8);
+    expect(root.querySelector('[data-hand-index="7"]')?.classList.contains('drawn-gap')).toBe(true);
+    expect(root.querySelector('[data-action="riichi"]')).not.toBeNull();
+    expect(root.querySelector('.timer.idle')).toBeNull(); // 打牌タイマーはここから
+  });
+});

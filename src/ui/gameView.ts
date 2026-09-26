@@ -8,6 +8,8 @@ import { tileEl } from './tile';
 export interface GameViewState {
   warning: string;
   timer: { remaining: number; total: number; label: string } | null;
+  /** 相手が捨てた直後：自分のツモ牌をまだ見せない（打牌・リーチ・ツモ判断もできない） */
+  concealDraw?: boolean;
 }
 
 export interface GameHandlers {
@@ -56,7 +58,9 @@ export function updateTimerEl(root: HTMLElement, timer: GameViewState['timer']):
   if (old) old.replaceWith(timerEl(timer));
 }
 
-function actionBar(g: Game, hd: GameHandlers): HTMLElement {
+function actionBar(g: Game, hd: GameHandlers, conceal: boolean): HTMLElement {
+  // ツモ牌を見せる前はボタンを出さない（行の高さは保つ）
+  if (conceal) return h('div', { class: g.riichi ? 'actions actions-riichi' : 'actions' });
   if (g.riichi) {
     // リーチ後は判断ボタンを常設する
     const ronPhase = g.phase === 'ronDecision';
@@ -99,10 +103,12 @@ function actionBar(g: Game, hd: GameHandlers): HTMLElement {
   return h('div', { class: 'actions' }, h('span', { class: 'hint' }, '相手の番…'));
 }
 
-function handEl(g: Game, hd: GameHandlers): HTMLElement {
-  const selectable = g.phase === 'playerDiscard';
+function handEl(g: Game, hd: GameHandlers, conceal: boolean): HTMLElement {
+  const selectable = g.phase === 'playerDiscard' && !conceal;
   const n = g.hand.length;
-  const tiles = g.hand.map((t, i) => {
+  // ツモ牌を見せる前は、右端のツモ牌を表示しない（添字は手牌の配列のまま）
+  const shown = conceal ? g.hand.filter((t, i) => !(t.id === g.drawnId && i === n - 1)) : g.hand;
+  const tiles = shown.map((t, i) => {
     const el = tileEl(t.kind, {
       size: 'lg',
       className: [
@@ -116,7 +122,7 @@ function handEl(g: Game, hd: GameHandlers): HTMLElement {
     return el;
   });
   const container = h('div', { class: 'hand', 'data-hand': '' }, tiles);
-  if (g.pendingDraw) {
+  if (g.pendingDraw && !conceal) {
     // リーチ後のツモ牌：タップでツモ切り
     const pending = tileEl(g.pendingDraw.kind, { size: 'lg', className: 'drawn-gap pending selectable' });
     pending.dataset.pending = '';
@@ -125,7 +131,7 @@ function handEl(g: Game, hd: GameHandlers): HTMLElement {
   }
   attachHandDnD(container, {
     onTap: (i) => {
-      if (g.phase === 'playerDiscard') hd.onTileTap(i);
+      if (g.phase === 'playerDiscard' && !conceal) hd.onTileTap(i);
     },
     onReorder: (from, to) => hd.onReorder(from, to),
     // 自動理牌なので、動かせるのは白だけ
@@ -176,8 +182,8 @@ export function renderGameView(g: Game, st: GameViewState, hd: GameHandlers): HT
       ),
     ),
     riverEl(g.playerRiver, 'player-river'),
-    actionBar(g, hd),
-    handEl(g, hd),
+    actionBar(g, hd, !!st.concealDraw),
+    handEl(g, hd, !!st.concealDraw),
   );
   root.addEventListener('click', (e) => {
     if (g.phase !== 'ronDecision') return;
