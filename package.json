@@ -1,0 +1,21 @@
+{
+  "name": "haku-mahjong",
+  "version": "1.0.0",
+  "private": true,
+  "description": "白オールマイティ 2人麻雀（多面待ち練習ゲーム）",
+  "type": "module",
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest"
+  },
+  "devDependencies": {
+    "@types/node": "^26.6.3",
+    "jsdom": "^29.1.1",
+    "typescript": "^7.0.2",
+    "vite": "^8.3.1",
+    "vitest": "^5.0.2"
+  }
+}
