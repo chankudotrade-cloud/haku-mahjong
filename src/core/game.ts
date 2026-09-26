@@ -13,7 +13,7 @@ import {
   type WaitInfo,
 } from './hand';
 import { analyzeTurn, type TurnAnalysis } from './review';
-import { RON_CHANCE, TSUMO_CHANCE, autoDiscardIndex, discardTimeLimit, type GameSettings } from './settings';
+import { RON_CHANCE, TSUMO_CHANCE, autoDiscardIndex, discardTimeLimit, rulesOf, type GameSettings } from './settings';
 import { HAKU, buildWallKinds, removeOne, shuffle, sortTiles, type Kind, type Rng, type Tile } from './tiles';
 
 export type Phase =
@@ -51,7 +51,7 @@ export interface EndInfo {
   reason: EndReason;
   turn: number;
   riichiTurn: number | null;
-  /** 該当時点の7枚 */
+  /** 該当時点の手牌（打牌後の 7・10・13枚。名前は7枚形のなごり） */
   hand7: Kind[];
   /** 紹介する待ち（リーチ時点の残り枚数） */
   waits: WaitInfo[];
@@ -67,7 +67,7 @@ export interface EndInfo {
   infinite?: boolean;
   /** リーチ漏れ・ノーテンリーチで切った牌 */
   discard?: Kind;
-  /** ノーテンリーチ：宣言時の8枚と、テンパイに取れた打牌 */
+  /** 宣言時の手牌（打牌前の 8・11・14枚） */
   hand8?: Kind[];
   notenOptions?: NotenOption[];
   /** 最大枚数でないリーチ：待ち枚数が最大になる打牌とその形 */
@@ -138,27 +138,29 @@ export class Game {
 
   constructor(opts: GameOptions) {
     this.settings = opts.settings;
-    this.rules = { allowHakuFifth: opts.settings.allowHakuFifth };
+    this.rules = rulesOf(opts.settings);
+    const n = opts.settings.handSize;
     this.rng = opts.rng ?? Math.random;
     const makeWall = opts.makeWall ?? defaultWall;
     for (;;) {
       this.dealCount++;
       const tiles = makeWall(this.rng).map((kind, id) => ({ id, kind }));
       const haku: Tile = { id: tiles.length, kind: HAKU };
-      const player6 = tiles.slice(0, 6);
-      const first = tiles[13];
+      // 山の先頭から プレイヤー(n-1)枚＋白 / 相手 n枚 / 第1ツモ
+      const player6 = tiles.slice(0, n - 1);
+      const opp7 = tiles.slice(n - 1, 2 * n - 1);
+      const first = tiles[2 * n - 1];
       // 配牌＋第1ツモがアガリ形なら配り直す（天和防止）。
       // 相手の配牌がテンパイでも配り直す（ツモ切りすれば必ずノーテンに戻れるようにするため）
-      const opp7 = kindsOf(tiles.slice(6, 13));
-      if (isAgari(kindsOf([...player6, haku, first]), this.rules) || waitKinds(opp7, this.rules).length > 0) {
+      if (isAgari(kindsOf([...player6, haku, first]), this.rules) || waitKinds(kindsOf(opp7), this.rules).length > 0) {
         if (this.dealCount > 10000) throw new Error('配牌を作れません');
         continue;
       }
       // 自動理牌（白は最初は右端）。ツモ牌はその右に置く
       this.hand = [...sortTiles(player6), haku, first];
       this.drawnId = first.id;
-      this.oppHand = tiles.slice(6, 13);
-      this.wall = tiles.slice(14);
+      this.oppHand = opp7;
+      this.wall = tiles.slice(2 * n);
       this.turn = 1;
       break;
     }

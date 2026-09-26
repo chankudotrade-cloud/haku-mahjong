@@ -141,3 +141,67 @@ describe('無限単騎・フリテン', () => {
     expect(st.riichiable).toBe(false);
   });
 });
+
+describe('10枚・13枚（アガリ11枚・14枚）', () => {
+  const CHIITOI = { allowHakuFifth: true, chiitoi: true };
+
+  it('11枚は3面子＋雀頭、14枚は4面子＋雀頭', () => {
+    expect(isAgari(P('123m456p789s11m'))).toBe(true);
+    expect(isAgari(P('123m456p78s11m5z'))).toBe(true); // 白＝9索
+    expect(isAgari(P('123m456p789s111s22m'))).toBe(true);
+    expect(isAgari(P('123m456p789s111s2m5z'))).toBe(true); // 白＝2萬（雀頭）
+    expect(isAgari(P('123m456p789s13s'))).toBe(false);
+  });
+
+  it('10枚形では対子5組＋1枚はアガリではない', () => {
+    expect(isAgari(P('11m33m55p77p99s1s'))).toBe(false);
+  });
+
+  it('チートイツ：種類の違う対子7組はアガリ（ルールありのときだけ）', () => {
+    const h = P('1133m5577p2299s44s');
+    expect(isAgari(h, CHIITOI)).toBe(true);
+    expect(isAgari(h)).toBe(false);
+    const d = decompose(h, CHIITOI).find((x) => x.chiitoi)!;
+    expect([d.pair, ...d.melds]).toHaveLength(7);
+    expect(d.hakuAs).toBeNull();
+  });
+
+  it('チートイツ：白は1枚の牌と組んで対子になる', () => {
+    const d = decompose(P('1133m5577p2299s4s5z'), CHIITOI).find((x) => x.chiitoi);
+    expect(d?.hakuAs).toBe(P('4s')[0]);
+  });
+
+  it('チートイツ：同じ牌4枚は2組の対子にしない', () => {
+    expect(decompose(P('1111m33p55p77s99s22p'), CHIITOI).some((d) => d.chiitoi)).toBe(false);
+  });
+
+  it('チートイツは14枚のときだけ（8枚の4トイツは対象外）', () => {
+    expect(isAgari(P('11m22p33s99m'), CHIITOI)).toBe(false);
+  });
+
+  it('13枚の待ち：チートイツの単騎待ち', () => {
+    expect(waitKinds(P('1133m5577p2299s4s'), CHIITOI)).toEqual(P('4s'));
+    expect(waitKinds(P('1133m5577p2299s4s'))).toEqual([]);
+  });
+
+  it('13枚の待ち：多面待ちも網羅する（1枚足したアガリ判定と一致）', () => {
+    for (const hs of ['123m456p2345678s', '1112345678999m', '123m456p78s1122s5z', '1133m5577p229s4s5z']) {
+      const hand = P(hs);
+      expect(hand).toHaveLength(13);
+      const brute: number[] = [];
+      for (let x = 0; x < WALL_KINDS; x++) {
+        if (hand.filter((k) => k === x).length < 4 && isAgari([...hand, x], CHIITOI)) brute.push(x);
+      }
+      expect(waitKinds(hand, CHIITOI)).toEqual(brute);
+    }
+    expect(waitKinds(P('1112345678999m'))).toEqual(P('123456789m')); // 九蓮宝燈形は9面待ち
+  });
+
+  it('無限単騎：4面子＋白、チートイツの対子6組＋白', () => {
+    expect(isInfiniteTanki(P('123m456m789p123s5z'))).toBe(true);
+    expect(waitKinds(P('123m456m789p123s5z'))).toHaveLength(WALL_KINDS);
+    expect(isInfiniteTanki(P('1133m5577p2299s5z'), CHIITOI)).toBe(true);
+    expect(isInfiniteTanki(P('1133m5577p2299s5z'))).toBe(false);
+    expect(analyzeTenpai(P('1133m5577p2299s5z'), [], CHIITOI).riichiable).toBe(false);
+  });
+});

@@ -7,6 +7,7 @@ import {
   discardTimeLimit,
   firstTurnSeconds,
   normalizeSettings,
+  rulesOf,
 } from './settings';
 import { parseKinds as P } from './tiles';
 
@@ -48,12 +49,24 @@ describe('判断秒数', () => {
 describe('設定の復元', () => {
   it('壊れた値は範囲内に直す', () => {
     expect(normalizeSettings({ discardSeconds: 99, decisionSeconds: -3, maxTurns: 'x', allowHakuFifth: 'no' })).toEqual({
+      handSize: 7,
       discardSeconds: 60,
       decisionSeconds: 1,
       maxTurns: 18,
       allowHakuFifth: true,
     });
     expect(normalizeSettings(null)).toEqual(DEFAULT_SETTINGS);
+  });
+  it('手牌の枚数は 7・10・13 のどれか（それ以外は7）', () => {
+    expect(normalizeSettings({ handSize: 10 }).handSize).toBe(10);
+    expect(normalizeSettings({ handSize: 13 }).handSize).toBe(13);
+    expect(normalizeSettings({ handSize: 8 }).handSize).toBe(7);
+    expect(normalizeSettings({ handSize: '13' }).handSize).toBe(7);
+  });
+  it('チートイツは13枚のときだけ', () => {
+    expect(rulesOf({ ...DEFAULT_SETTINGS, handSize: 13 }).chiitoi).toBe(true);
+    expect(rulesOf({ ...DEFAULT_SETTINGS, handSize: 10 }).chiitoi).toBe(false);
+    expect(rulesOf(DEFAULT_SETTINGS).chiitoi).toBe(false);
   });
   it('白の5枚目扱いは常に可（保存値が不可でも可に戻す）', () => {
     expect(normalizeSettings({ allowHakuFifth: false }).allowHakuFifth).toBe(true);

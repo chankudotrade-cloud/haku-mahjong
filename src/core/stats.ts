@@ -1,4 +1,5 @@
 import type { EndInfo, TurnRecord } from './game';
+import { HAND_SIZES, type HandSize } from './settings';
 
 export interface Stats {
   rounds: number;
@@ -87,4 +88,19 @@ export function summarize(s: Stats) {
     falseDeclaration: s.falseDeclaration,
     bestRate: ratio(s.bestMatch, s.bestEligible),
   };
+}
+
+/** 手牌の枚数ごとの成績 */
+export type StatsBySize = Record<HandSize, Stats>;
+
+/**
+ * 枚数ごとの成績を復元する。
+ * legacy は枚数で分ける前の成績（すべて7枚のもの）で、7枚の成績が無いときだけ引き継ぐ。
+ */
+export function normalizeStatsBySize(raw: unknown, legacy?: unknown): StatsBySize {
+  const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
+  const out = {} as StatsBySize;
+  for (const n of HAND_SIZES) out[n] = normalizeStats(o[String(n)]);
+  if (o['7'] == null && legacy != null) out[7] = normalizeStats(legacy);
+  return out;
 }

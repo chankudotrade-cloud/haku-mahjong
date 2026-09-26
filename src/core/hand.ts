@@ -1,15 +1,18 @@
 /**
  * アガリ判定・待ち計算（純粋関数）。
- * アガリ形は 8枚 = 2面子 + 1雀頭。白は任意の1枚として扱う。
+ * アガリ形は 8枚 = 2面子+雀頭 / 11枚 = 3面子+雀頭 / 14枚 = 4面子+雀頭（とチートイツ）。
+ * 白は任意の1枚として扱う。手牌の枚数は配列の長さから決まる。
  */
 import { HAKU, NUM_KINDS, WALL_KINDS, countKinds, isNumberKind, rankOf, type Kind } from './tiles';
 
 export interface RuleOptions {
   /** 白を「同じ牌の5枚目」として扱えるか */
   allowHakuFifth: boolean;
+  /** 14枚のときチートイツ（種類の違う対子7組）をアガリにするか */
+  chiitoi?: boolean;
 }
 
-export const DEFAULT_RULES: RuleOptions = { allowHakuFifth: true };
+export const DEFAULT_RULES: RuleOptions = { allowHakuFifth: true, chiitoi: false };
 
 export interface GroupTile {
   kind: Kind;
@@ -24,9 +27,12 @@ export interface Group {
 
 export interface Decomposition {
   pair: Group;
+  /** 面子。チートイツのときは残り6組の対子 */
   melds: Group[];
   /** 白が何として使われたか（白を含まない形なら null） */
   hakuAs: Kind | null;
+  /** チートイツの形 */
+  chiitoi?: boolean;
 }
 
 export interface WaitInfo {
@@ -40,7 +46,7 @@ export interface WaitInfo {
 export interface TenpaiStatus {
   waits: Kind[];
   tenpai: boolean;
-  /** 無限単騎（2面子＋白） */
+  /** 無限単騎（白を除いた牌が面子だけ、またはチートイツで対子6組） */
   infinite: boolean;
   furiten: boolean;
   /** フリテンの原因になった河の牌（待ちに含まれる河の牌） */
@@ -102,9 +108,12 @@ function findHakuAs(pair: Group, melds: Group[]): Kind | null {
   return null;
 }
 
-/** 8枚のアガリ形の分解をすべて返す（アガリでなければ空配列） */
+/** アガリ形の枚数か（8・11・14枚） */
+export const isWinningSize = (n: number) => n >= 8 && n <= 14 && n % 3 === 2;
+
+/** アガリ形の分解をすべて返す（アガリでなければ空配列） */
 export function decompose(kinds: readonly Kind[], rules: RuleOptions = DEFAULT_RULES): Decomposition[] {
-  if (kinds.length !== 8) return [];
+  if (!isWinningSize(kinds.length)) return [];
   const counts = countKinds(kinds);
   const haku = counts[HAKU];
   if (haku > 1) throw new Error('白は1枚まで');
@@ -133,16 +142,41 @@ export function decompose(kinds: readonly Kind[], rules: RuleOptions = DEFAULT_R
       counts[p] += 1;
     }
   }
-  return [...out.values()];
+  const result = [...out.values()];
+  if (rules.chiitoi && kinds.length === 14) {
+    const c = chiitoiDecomposition(counts, haku);
+    if (c) result.push(c);
+  }
+  return result;
+}
+
+/** チートイツ：種類の違う対子7組（同じ牌4枚は2組にしない）。白は1枚の牌と組んで対子になる */
+function chiitoiDecomposition(counts: readonly number[], haku: number): Decomposition | null {
+  const pairs: Group[] = [];
+  let hakuAs: Kind | null = null;
+  for (let k = 0; k < NUM_KINDS; k++) {
+    const c = counts[k];
+    if (c === 0) continue;
+    if (c === 2) pairs.push({ type: 'pair', tiles: [R(k), R(k)] });
+    else if (c === 1 && haku === 1 && hakuAs === null) {
+      hakuAs = k;
+      pairs.push({ type: 'pair', tiles: [R(k), H(k)] });
+    } else return null;
+  }
+  if (pairs.length !== 7 || (haku === 1 && hakuAs === null)) return null;
+  return { pair: pairs[0], melds: pairs.slice(1), hakuAs, chiitoi: true };
 }
 
 export function isAgari(kinds: readonly Kind[], rules: RuleOptions = DEFAULT_RULES): boolean {
   return decompose(kinds, rules).length > 0;
 }
 
-/** 7枚の待ち牌（山に入る数牌だけが待ちになる。手の内に4枚ある牌も待ちにしない） */
+/** テンパイ判定する手牌の枚数か（7・10・13枚） */
+export const isHandSize = (n: number) => isWinningSize(n + 1);
+
+/** 待ち牌（山に入る数牌だけが待ちになる。手の内に4枚ある牌も待ちにしない）。手牌は7・10・13枚 */
 export function waitKinds(hand7: readonly Kind[], rules: RuleOptions = DEFAULT_RULES): Kind[] {
-  if (hand7.length !== 7) return [];
+  if (!isHandSize(hand7.length)) return [];
   const c = countKinds(hand7);
   const out: Kind[] = [];
   for (let x = 0; x < WALL_KINDS; x++) {
@@ -152,16 +186,21 @@ export function waitKinds(hand7: readonly Kind[], rules: RuleOptions = DEFAULT_R
   return out;
 }
 
-/** 無限単騎（白単騎）：白を除いた6枚が2面子になっている形 */
-export function isInfiniteTanki(hand7: readonly Kind[]): boolean {
-  if (hand7.length !== 7 || !hand7.includes(HAKU)) return false;
+/**
+ * 無限単騎（白単騎）：白を除いた牌がすべて面子になっている形。
+ * チートイツありなら、白を除いた12枚が種類の違う対子6組の形も含む。
+ */
+export function isInfiniteTanki(hand7: readonly Kind[], rules: RuleOptions = DEFAULT_RULES): boolean {
+  if (!isHandSize(hand7.length) || !hand7.includes(HAKU)) return false;
   const counts = countKinds(hand7);
   counts[HAKU] = 0;
   let found = false;
   searchMelds(counts, 0, () => false, [], () => {
     found = true;
   });
-  return found;
+  if (found) return true;
+  if (rules.chiitoi && hand7.length === 13) return counts.every((c) => c === 0 || c === 2);
+  return false;
 }
 
 export function analyzeTenpai(
@@ -171,7 +210,7 @@ export function analyzeTenpai(
 ): TenpaiStatus {
   const waits = waitKinds(hand7, rules);
   const tenpai = waits.length > 0;
-  const infinite = tenpai && isInfiniteTanki(hand7);
+  const infinite = tenpai && isInfiniteTanki(hand7, rules);
   const furitenTiles = waits.filter((w) => river.includes(w));
   const furiten = furitenTiles.length > 0;
   return { waits, tenpai, infinite, furiten, furitenTiles, riichiable: tenpai && !furiten && !infinite };

@@ -507,3 +507,34 @@ describe('相手の打牌', () => {
     }
   });
 });
+
+describe('手牌の枚数（7・10・13）', () => {
+  for (const n of [10, 13] as const) {
+    it(`${n}枚：配牌・山の枚数`, () => {
+      const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: n }, rng: mulberry32(5) });
+      expect(g.hand).toHaveLength(n + 1);
+      expect(g.handKinds.filter((k) => k === HAKU)).toHaveLength(1);
+      expect(g.oppHand).toHaveLength(n);
+      expect(g.wall.length).toBe(108 - 2 * n);
+      expect(waitKinds(g.oppHand.map((t) => t.kind), g.rules)).toEqual([]);
+    });
+
+    it(`${n}枚：時間切れだけで局を最後まで進められる`, () => {
+      for (let seed = 1; seed <= 5; seed++) {
+        const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: n }, rng: mulberry32(seed) });
+        let guard = 0;
+        while (g.phase !== 'ended' && guard++ < 200) {
+          if (g.phase === 'opponentTurn') g.advanceOpponent();
+          else g.timeout();
+        }
+        expect(g.phase).toBe('ended');
+        expect(g.hand.length).toBe(n);
+      }
+    });
+  }
+
+  it('13枚はチートイツありのルールで判定する', () => {
+    expect(new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13 }, rng: mulberry32(1) }).rules.chiitoi).toBe(true);
+    expect(new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 10 }, rng: mulberry32(1) }).rules.chiitoi).toBe(false);
+  });
+});

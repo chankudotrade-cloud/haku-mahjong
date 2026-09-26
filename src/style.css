@@ -123,6 +123,9 @@ button {
   gap: 10px;
   max-width: 640px;
   margin: 0 auto;
+  /* 手牌の牌幅：手牌＋ツモ牌の枚数（--slots）と画面幅から決める。ツモ牌の前に 0.3枚分のすき間 */
+  --tw: min(46px, calc((min(100vw, 640px) - 32px - var(--slots, 8) * 2px) / (var(--slots, 8) + 0.4)));
+  --hand-w: calc((var(--tw) + 2px) * var(--slots, 8) + var(--tw) * 0.3 + 4px);
 }
 .topbar {
   display: flex;
@@ -258,13 +261,13 @@ button {
 }
 /* リーチ後のツモ／ロン：手牌と同じ幅で右寄せ＝ツモ牌の置き場所の上 */
 .actions.actions-riichi {
-  width: calc(var(--tw) * 8.3 + 20px);
+  width: var(--hand-w);
   margin: 0 auto;
   justify-content: flex-end;
 }
 .actions-riichi .btn-win {
   min-width: 0;
-  width: calc(var(--tw) * 1.9);
+  width: max(calc(var(--tw) * 1.9), 72px);
   padding: 10px 0;
 }
 .hint {
@@ -312,7 +315,7 @@ button {
   display: flex;
   justify-content: flex-start;
   align-items: flex-end;
-  width: calc(var(--tw) * 8.3 + 20px);
+  width: var(--hand-w);
   height: calc(var(--tw) * 59 / 33 + 28px);
   margin: 0 auto;
   padding: 10px 0 18px;
@@ -407,6 +410,27 @@ button {
 }
 .setting.check {
   grid-template-columns: auto 1fr;
+}
+.size-select {
+  grid-template-columns: 9em 1fr;
+}
+.segmented {
+  display: flex;
+  border-radius: 999px;
+  overflow: hidden;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+}
+.seg {
+  flex: 1;
+  border: none;
+  padding: 8px 0;
+  background: transparent;
+  color: var(--ink);
+  font-weight: 700;
+}
+.seg.active {
+  background: var(--accent);
+  color: #111;
 }
 .setting output {
   text-align: right;

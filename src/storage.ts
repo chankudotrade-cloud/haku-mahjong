@@ -1,8 +1,10 @@
 import { normalizeSettings, type GameSettings } from './core/settings';
-import { normalizeStats, type Stats } from './core/stats';
+import { normalizeStatsBySize, type StatsBySize } from './core/stats';
 
 const SETTINGS_KEY = 'haku-mahjong:settings';
-const STATS_KEY = 'haku-mahjong:stats';
+/** 枚数で分ける前の成績（7枚のものとして引き継ぐ） */
+const LEGACY_STATS_KEY = 'haku-mahjong:stats';
+const STATS_KEY = 'haku-mahjong:stats-by-size';
 
 function read(key: string): unknown {
   try {
@@ -23,5 +25,5 @@ function write(key: string, value: unknown): void {
 
 export const loadSettings = (): GameSettings => normalizeSettings(read(SETTINGS_KEY));
 export const saveSettings = (s: GameSettings) => write(SETTINGS_KEY, s);
-export const loadStats = (): Stats => normalizeStats(read(STATS_KEY));
-export const saveStats = (s: Stats) => write(STATS_KEY, s);
+export const loadStats = (): StatsBySize => normalizeStatsBySize(read(STATS_KEY), read(LEGACY_STATS_KEY));
+export const saveStats = (s: StatsBySize) => write(STATS_KEY, s);

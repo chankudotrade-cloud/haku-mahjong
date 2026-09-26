@@ -112,7 +112,7 @@ function body(end: EndInfo): (HTMLElement | null)[] {
       ];
     case 'notenRiichi': {
       const opts = end.notenOptions ?? [];
-      if (!opts.length) return [h('p', { class: 'lead' }, 'この8枚からはテンパイに取れませんでした')];
+      if (!opts.length) return [h('p', { class: 'lead' }, `この${end.hand8!.length}枚からはテンパイに取れませんでした`)];
       return opts.map((o) =>
         tenpaiBlock(
           o.infinite

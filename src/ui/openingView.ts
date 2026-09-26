@@ -1,4 +1,5 @@
 import {
+  HAND_SIZES,
   DECISION_SECONDS,
   DISCARD_SECONDS,
   MAX_TURNS,
@@ -36,7 +37,7 @@ function slider(
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
 const num = (v: number | null) => (v === null ? '—' : v.toFixed(1));
 
-function statsEl(stats: Stats, onReset: () => void): HTMLElement {
+function statsEl(stats: Stats, handSize: number, onReset: () => void): HTMLElement {
   const s = summarize(stats);
   const rows: [string, string][] = [
     ['局数', `${s.rounds}`],
@@ -54,14 +55,14 @@ function statsEl(stats: Stats, onReset: () => void): HTMLElement {
   return h(
     'details',
     { class: 'stats' },
-    h('summary', {}, '成績'),
+    h('summary', {}, `成績（${handSize}枚）`),
     h('dl', {}, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
     h(
       'button',
       {
         class: 'btn-link',
         onclick: () => {
-          if (confirm('成績をリセットしますか？')) onReset();
+          if (confirm(`${handSize}枚の成績をリセットしますか？`)) onReset();
         },
       },
       '成績をリセット',
@@ -90,7 +91,30 @@ export function renderOpeningView(settings: GameSettings, stats: Stats, hd: Open
       { class: 'opening-card' },
       h('div', { class: 'logo' }, tileEl(HAKU, { size: 'lg' })),
       h('h1', {}, '白オールマイティ', h('br'), h('small', {}, '2人麻雀・多面待ち練習')),
-      h('p', { class: 'rules' }, '白は何にでもなれる。8枚で2面子1雀頭。テンパイしたら必ずリーチ、待ちは自分で読む。'),
+      h('p', { class: 'rules' }, '白は何にでもなれる。面子と雀頭でアガリ（13枚はチートイツも）。テンパイしたら必ずリーチ、待ちは自分で読む。'),
+      h(
+        'div',
+        { class: 'setting size-select', role: 'radiogroup', 'aria-label': '手牌の枚数' },
+        h('span', {}, '手牌の枚数'),
+        h(
+          'div',
+          { class: 'segmented' },
+          HAND_SIZES.map((n) =>
+            h(
+              'button',
+              {
+                type: 'button',
+                role: 'radio',
+                'aria-checked': String(n === s.handSize),
+                class: n === s.handSize ? 'seg active' : 'seg',
+                'data-hand-size': n,
+                onclick: () => update({ handSize: n }),
+              },
+              `${n}枚`,
+            ),
+          ),
+        ),
+      ),
       slider('打牌秒数', s.discardSeconds, DISCARD_SECONDS, (v) => update({ discardSeconds: clampDiscardSeconds(v) })),
       slider('リーチ後の判断秒数', s.decisionSeconds, DECISION_SECONDS, (v) => update({ decisionSeconds: clampDecisionSeconds(v) })),
       h(
@@ -100,7 +124,7 @@ export function renderOpeningView(settings: GameSettings, stats: Stats, hd: Open
         h('label', { class: 'setting' }, h('span', {}, '流局巡目'), turns),
       ),
       h('button', { class: 'btn btn-primary btn-start', onclick: () => hd.onStart() }, 'スタート'),
-      statsEl(stats, hd.onResetStats),
+      statsEl(stats, s.handSize, hd.onResetStats),
       h(
         'p',
         { class: 'credit' },

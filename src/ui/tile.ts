@@ -78,8 +78,9 @@ export function decompEl(d: Decomposition, size: TileOptions['size'] = 'sm'): HT
   return h(
     'span',
     { class: 'decomp' },
-    d.melds.map((m) => groupEl(m, size)),
-    groupEl(d.pair, size),
+    // チートイツは対子7組を順に並べる。通常は面子→雀頭
+    d.chiitoi ? [d.pair, ...d.melds].map((g) => groupEl(g, size)) : [...d.melds.map((m) => groupEl(m, size)), groupEl(d.pair, size)],
+    d.chiitoi ? h('span', { class: 'decomp-note' }, 'チートイツ') : null,
     d.hakuAs != null ? h('span', { class: 'decomp-note' }, `白＝${kindName(d.hakuAs)}`) : null,
   );
 }

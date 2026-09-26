@@ -145,7 +145,8 @@ export function renderGameView(g: Game, st: GameViewState, hd: GameHandlers): HT
     'div',
     {
       class: `screen game${g.phase === 'ended' ? ' frozen' : ''}`,
-      style: `--river-rows:${riverRows}`,
+      // --slots：手牌＋ツモ牌の枚数（牌の大きさと手牌の幅を決める）
+      style: `--river-rows:${riverRows};--slots:${g.settings.handSize + 1}`,
     },
     h(
       'div',

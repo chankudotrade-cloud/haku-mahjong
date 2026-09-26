@@ -41,8 +41,9 @@ describe('App（画面遷移のスモークテスト）', () => {
 
     click([...root.querySelectorAll('button')].find((b) => b.textContent === '次の局へ')!);
     expect(root.querySelector('.game')).not.toBeNull();
-    const stats = JSON.parse(localStorage.getItem('haku-mahjong:stats')!);
-    expect(stats.rounds).toBe(1);
+    const stats = JSON.parse(localStorage.getItem('haku-mahjong:stats-by-size')!);
+    expect(stats['7'].rounds).toBe(1);
+    expect(stats['10'].rounds).toBe(0);
   });
 
   it('1巡目は15秒、2巡目以降は設定秒数で時間切れになる', () => {
@@ -66,5 +67,20 @@ describe('App（画面遷移のスモークテスト）', () => {
     expect(root.querySelector('.notice')?.textContent).toBe('白は切れません');
     expect(root.querySelector('.game')).not.toBeNull();
     expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(8);
+  });
+});
+
+describe('オープニングの手牌の枚数', () => {
+  it('7・10・13枚を選べ、選んだ枚数で局が始まり、成績の表示も切り替わる', () => {
+    const root = document.createElement('div');
+    new App(root).start();
+    expect([...root.querySelectorAll('[data-hand-size]')].map((b) => b.textContent)).toEqual(['7枚', '10枚', '13枚']);
+    expect(root.querySelector('.stats summary')?.textContent).toBe('成績（7枚）');
+    click(root.querySelector('[data-hand-size="13"]'));
+    expect(root.querySelector('[data-hand-size="13"]')?.classList.contains('active')).toBe(true);
+    expect(root.querySelector('.stats summary')?.textContent).toBe('成績（13枚）');
+    expect(JSON.parse(localStorage.getItem('haku-mahjong:settings')!).handSize).toBe(13);
+    click(root.querySelector('.btn-start'));
+    expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(14);
   });
 });

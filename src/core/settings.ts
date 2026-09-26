@@ -10,7 +10,13 @@ export const RON_CHANCE = 0.25;
 /** リーチ後、自分のツモが待ち牌になる確率 */
 export const TSUMO_CHANCE = 0.25;
 
+/** 選べる手牌の枚数（白を含む配牌の枚数） */
+export const HAND_SIZES = [7, 10, 13] as const;
+export type HandSize = (typeof HAND_SIZES)[number];
+
 export interface GameSettings {
+  /** 手牌の枚数（7・10・13）。13枚のときはチートイツもアガリ */
+  handSize: HandSize;
   /** リーチ前の打牌秒数 */
   discardSeconds: number;
   /** リーチ後の判断秒数 */
@@ -22,6 +28,7 @@ export interface GameSettings {
 }
 
 export const DEFAULT_SETTINGS: GameSettings = {
+  handSize: 7,
   discardSeconds: DISCARD_SECONDS.default,
   decisionSeconds: DECISION_SECONDS.default,
   maxTurns: MAX_TURNS.default,
@@ -43,12 +50,22 @@ export const clampMaxTurns = (v: unknown) => clampInt(v, MAX_TURNS.min, MAX_TURN
 export function normalizeSettings(raw: unknown): GameSettings {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
+    handSize: normalizeHandSize(o.handSize),
     discardSeconds: clampDiscardSeconds(o.discardSeconds),
     decisionSeconds: clampDecisionSeconds(o.decisionSeconds),
     maxTurns: clampMaxTurns(o.maxTurns),
     // 画面からは変更できない（常に可）。以前保存された値は使わない
     allowHakuFifth: DEFAULT_SETTINGS.allowHakuFifth,
   };
+}
+
+export function normalizeHandSize(v: unknown): HandSize {
+  return (HAND_SIZES as readonly unknown[]).includes(v) ? (v as HandSize) : DEFAULT_SETTINGS.handSize;
+}
+
+/** 設定からアガリ判定のルールを作る（チートイツは13枚のときだけ） */
+export function rulesOf(s: GameSettings): { allowHakuFifth: boolean; chiitoi: boolean } {
+  return { allowHakuFifth: s.allowHakuFifth, chiitoi: s.handSize === 13 };
 }
 
 /** 1巡目は15秒（設定値が15秒より長ければ設定値） */

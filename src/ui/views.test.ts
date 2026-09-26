@@ -284,3 +284,13 @@ describe('終了画面', () => {
     expect(el.textContent).toContain('この8枚からはテンパイに取れませんでした');
   });
 });
+
+describe('手牌の枚数ごとの表示', () => {
+  it('13枚：手牌＋ツモ牌で14枚を表示し、牌の大きさ用に --slots:14 を渡す', () => {
+    const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13 }, rng: mulberry32(9) });
+    const el = view(g);
+    expect(el.querySelectorAll('[data-hand-index]')).toHaveLength(14);
+    expect(el.getAttribute('style')).toContain('--slots:14');
+    expect(el.querySelector('[data-action="riichi"]')).not.toBeNull();
+  });
+});
