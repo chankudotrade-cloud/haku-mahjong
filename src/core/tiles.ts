@@ -93,10 +93,11 @@ export function removeOne(kinds: readonly Kind[], k: Kind): Kind[] {
   return [...kinds.slice(0, i), ...kinds.slice(i + 1)];
 }
 
-/** 山の中身（数牌108枚。發・中・白は入れない） */
-export function buildWallKinds(): Kind[] {
+/** 山の中身（指定した種類を各4枚。省略時は数牌108枚。發・中・白は入れない） */
+export function buildWallKinds(kinds?: readonly Kind[]): Kind[] {
+  const ks = kinds ?? Array.from({ length: WALL_KINDS }, (_, k) => k);
   const out: Kind[] = [];
-  for (let k = 0; k < WALL_KINDS; k++) for (let n = 0; n < 4; n++) out.push(k);
+  for (const k of ks) for (let n = 0; n < 4; n++) out.push(k);
   return out;
 }
 

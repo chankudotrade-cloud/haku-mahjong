@@ -1,5 +1,6 @@
 import {
   HAND_SIZES,
+  SUIT_COUNTS,
   DECISION_SECONDS,
   DISCARD_SECONDS,
   MAX_TURNS,
@@ -13,10 +14,58 @@ import { HAKU } from '../core/tiles';
 import { h } from './dom';
 import { tileEl } from './tile';
 
+export const TITLE = '1人用 白マイティ麻雀';
+
+/** オープニングに出すルール */
+const RULES = [
+  '白はオールマイティです。',
+  '7枚・10枚はチートイツなし',
+  'テンパイしたら必ずリーチしてください',
+  '一番多い待ちを選んでください',
+  'フリテンリーチは禁止です',
+];
+
 export interface OpeningHandlers {
   onStart(): void;
   onSettingsChange(s: GameSettings): void;
   onResetStats(): void;
+}
+
+/** 牌の色数の説明 */
+const SUIT_LABELS: Record<number, string> = { 1: '1色', 2: '2色', 3: '3色' };
+
+/** 横並びの選択ボタン（ラジオ） */
+function segmented<T extends number>(
+  label: string,
+  values: readonly T[],
+  current: T,
+  text: (v: T) => string,
+  dataAttr: string,
+  onPick: (v: T) => void,
+): HTMLElement {
+  return h(
+    'div',
+    { class: 'setting size-select', role: 'radiogroup', 'aria-label': label },
+    h('span', {}, label),
+    h(
+      'div',
+      { class: 'segmented' },
+      values.map((v) =>
+        h(
+          'button',
+          {
+            type: 'button',
+            role: 'radio',
+            'aria-checked': String(v === current),
+            class: v === current ? 'seg active' : 'seg',
+            [dataAttr]: v,
+            onclick: () => onPick(v),
+          },
+          text(v),
+        ),
+      ),
+    ),
+  );
 }
 
 function slider(
@@ -37,7 +86,7 @@ function slider(
 const pct = (v: number | null) => (v === null ? '—' : `${(v * 100).toFixed(1)}%`);
 const num = (v: number | null) => (v === null ? '—' : v.toFixed(1));
 
-function statsEl(stats: Stats, handSize: number, onReset: () => void): HTMLElement {
+function statsEl(stats: Stats, mode: string, onReset: () => void): HTMLElement {
   const s = summarize(stats);
   const rows: [string, string][] = [
     ['局数', `${s.rounds}`],
@@ -52,20 +101,23 @@ function statsEl(stats: Stats, handSize: number, onReset: () => void): HTMLEleme
     ['誤宣言', `${s.falseDeclaration}回`],
     ['最善打牌一致率', pct(s.bestRate)],
   ];
+  // 成績は折りたたまずに常に表示する
   return h(
-    'details',
+    'section',
     { class: 'stats' },
-    h('summary', {}, `成績（${handSize}枚）`),
+    h('h2', {}, `成績（${mode}）`),
     h('dl', {}, rows.flatMap(([k, v]) => [h('dt', {}, k), h('dd', {}, v)])),
     h(
       'button',
       {
-        class: 'btn-link',
+        type: 'button',
+        class: 'btn btn-clear',
+        'data-action': 'clear-stats',
         onclick: () => {
-          if (confirm(`${handSize}枚の成績をリセットしますか？`)) onReset();
+          if (confirm(`${mode}の成績をクリアしますか？（元に戻せません）`)) onReset();
         },
       },
-      '成績をリセット',
+      `成績クリア（${mode}）`,
     ),
   );
 }
@@ -90,31 +142,16 @@ export function renderOpeningView(settings: GameSettings, stats: Stats, hd: Open
       'div',
       { class: 'opening-card' },
       h('div', { class: 'logo' }, tileEl(HAKU, { size: 'lg' })),
-      h('h1', {}, '白オールマイティ', h('br'), h('small', {}, '2人麻雀・多面待ち練習')),
-      h('p', { class: 'rules' }, '白は何にでもなれる。面子と雀頭でアガリ（13枚はチートイツも）。テンパイしたら必ずリーチ、待ちは自分で読む。'),
+      h('h1', {}, TITLE),
+      h('p', { class: 'tagline' }, '1シャンテンに強くなるための練習ゲームです。'),
       h(
-        'div',
-        { class: 'setting size-select', role: 'radiogroup', 'aria-label': '手牌の枚数' },
-        h('span', {}, '手牌の枚数'),
-        h(
-          'div',
-          { class: 'segmented' },
-          HAND_SIZES.map((n) =>
-            h(
-              'button',
-              {
-                type: 'button',
-                role: 'radio',
-                'aria-checked': String(n === s.handSize),
-                class: n === s.handSize ? 'seg active' : 'seg',
-                'data-hand-size': n,
-                onclick: () => update({ handSize: n }),
-              },
-              `${n}枚`,
-            ),
-          ),
-        ),
+        'ul',
+        { class: 'rules' },
+        RULES.map((r) => h('li', {}, r)),
       ),
+      segmented('手牌の枚数', HAND_SIZES, s.handSize, (n) => `${n}枚`, 'data-hand-size', (n) => update({ handSize: n })),
+      segmented('牌の数', SUIT_COUNTS, s.suits, (n) => SUIT_LABELS[n], 'data-suits', (n) => update({ suits: n })),
+      h('p', { class: 'setting-note' }, '3色＝萬子・筒子・索子 / 2色＝筒子・索子 / 1色＝筒子のみ'),
       slider('打牌秒数', s.discardSeconds, DISCARD_SECONDS, (v) => update({ discardSeconds: clampDiscardSeconds(v) })),
       slider('リーチ後の判断秒数', s.decisionSeconds, DECISION_SECONDS, (v) => update({ decisionSeconds: clampDecisionSeconds(v) })),
       h(
@@ -124,7 +161,7 @@ export function renderOpeningView(settings: GameSettings, stats: Stats, hd: Open
         h('label', { class: 'setting' }, h('span', {}, '流局巡目'), turns),
       ),
       h('button', { class: 'btn btn-primary btn-start', onclick: () => hd.onStart() }, 'スタート'),
-      statsEl(stats, s.handSize, hd.onResetStats),
+      statsEl(stats, `${s.handSize}枚・${SUIT_LABELS[s.suits]}`, hd.onResetStats),
       h(
         'p',
         { class: 'credit' },

@@ -7,13 +7,12 @@ import {
   decompose,
   isAgari,
   waitDetails,
-  waitKinds,
   type Decomposition,
   type RuleOptions,
   type WaitInfo,
 } from './hand';
 import { analyzeTurn, type TurnAnalysis } from './review';
-import { RON_CHANCE, TSUMO_CHANCE, autoDiscardIndex, discardTimeLimit, rulesOf, type GameSettings } from './settings';
+import { RON_CHANCE, TSUMO_CHANCE, autoDiscardIndex, discardTimeLimit, rulesOf, wallKindsOf, type GameSettings } from './settings';
 import { HAKU, buildWallKinds, removeOne, shuffle, sortTiles, type Kind, type Rng, type Tile } from './tiles';
 
 export type Phase =
@@ -98,11 +97,9 @@ export type DiscardResult = 'ok' | 'haku' | 'invalid';
 export interface GameOptions {
   settings: GameSettings;
   rng?: Rng;
-  /** 山の並び（先頭から プレイヤー6枚・相手7枚・以降ツモ順）。テスト用に差し替え可能 */
+  /** 山の並び（先頭から プレイヤーの配牌(手牌の枚数-1)枚・第1ツモ・以降ツモ順）。テスト用に差し替え可能 */
   makeWall?: (rng: Rng) => Kind[];
 }
-
-const defaultWall = (rng: Rng) => shuffle(buildWallKinds(), rng);
 const kindsOf = (tiles: readonly { kind: Kind }[]) => tiles.map((t) => t.kind);
 const riverKinds = (river: readonly RiverTile[]) => river.map((r) => r.tile.kind);
 
@@ -120,12 +117,13 @@ export class Game {
   pendingDraw: Tile | null = null;
   /** リーチ後にロン判断中の相手の捨て牌 */
   ronTile: Tile | null = null;
-  oppHand: Tile[] = [];
   playerRiver: RiverTile[] = [];
   oppRiver: RiverTile[] = [];
   /** プレイヤーの巡目（ツモった回数） */
   turn = 0;
   oppTurn = 0;
+  /** 各自の最大巡数（流局巡目。山が足りなければ山が尽きる巡まで） */
+  maxTurns = 0;
   riichi = false;
   riichiTurn: number | null = null;
   /** 「リーチ」ボタンが押され、宣言牌の選択待ち */
@@ -141,27 +139,27 @@ export class Game {
     this.rules = rulesOf(opts.settings);
     const n = opts.settings.handSize;
     this.rng = opts.rng ?? Math.random;
-    const makeWall = opts.makeWall ?? defaultWall;
+    const wallKinds = wallKindsOf(opts.settings.suits);
+    const makeWall = opts.makeWall ?? ((rng: Rng) => shuffle(buildWallKinds(wallKinds), rng));
     for (;;) {
       this.dealCount++;
       const tiles = makeWall(this.rng).map((kind, id) => ({ id, kind }));
       const haku: Tile = { id: tiles.length, kind: HAKU };
-      // 山の先頭から プレイヤー(n-1)枚＋白 / 相手 n枚 / 第1ツモ
+      // 山の先頭から プレイヤー(n-1)枚＋白 / 第1ツモ。相手は手牌を持たない
       const player6 = tiles.slice(0, n - 1);
-      const opp7 = tiles.slice(n - 1, 2 * n - 1);
-      const first = tiles[2 * n - 1];
-      // 配牌＋第1ツモがアガリ形なら配り直す（天和防止）。
-      // 相手の配牌がテンパイでも配り直す（ツモ切りすれば必ずノーテンに戻れるようにするため）
-      if (isAgari(kindsOf([...player6, haku, first]), this.rules) || waitKinds(kindsOf(opp7), this.rules).length > 0) {
+      const first = tiles[n - 1];
+      // 配牌＋第1ツモがアガリ形なら配り直す（天和防止）
+      if (isAgari(kindsOf([...player6, haku, first]), this.rules)) {
         if (this.dealCount > 10000) throw new Error('配牌を作れません');
         continue;
       }
       // 自動理牌（白は最初は右端）。ツモ牌はその右に置く
       this.hand = [...sortTiles(player6), haku, first];
       this.drawnId = first.id;
-      this.oppHand = opp7;
-      this.wall = tiles.slice(2 * n);
+      this.wall = tiles.slice(n);
       this.turn = 1;
+      // 残りの山 W 枚を 相手・自分・相手…の順に引く。自分が T 巡目まで打つには 2T-1 枚要る
+      this.maxTurns = Math.min(opts.settings.maxTurns, Math.floor((this.wall.length + 1) / 2));
       break;
     }
   }
@@ -171,7 +169,7 @@ export class Game {
   }
 
   get isLastTurn(): boolean {
-    return this.turn >= this.settings.maxTurns;
+    return this.turn >= this.maxTurns;
   }
 
   /** この打牌でリーチできるか（最終巡はリーチ不可） */
@@ -352,28 +350,17 @@ export class Game {
     return this.wall.splice(i, 1)[0];
   }
 
-  /** 相手の手番（ツモって、テンパイにならない牌を切る） */
+  /** 相手の手番：相手は手牌を持たず、山から引いた牌をそのまま捨てる */
   advanceOpponent(): void {
     if (this.phase !== 'opponentTurn') return;
     this.oppTurn++;
-    // リーチ後は RON_CHANCE の確率で待ち牌をツモらせてツモ切りさせる。それ以外は待ち牌を捨てさせない
-    const giveWin = this.riichi ? this.rng() < RON_CHANCE : undefined;
-    const drawn = this.takeFromWall(giveWin);
-    if (!drawn) {
+    // リーチ後は RON_CHANCE の確率で待ち牌を、それ以外は待ち牌以外を山から引いて捨てる
+    const d = this.takeFromWall(this.riichi ? this.rng() < RON_CHANCE : undefined);
+    if (!d) {
       this.finishRyuukyoku();
       return;
     }
-    this.oppHand.push(drawn);
-    const waits = this.waitSet();
-    // テンパイにならないことを優先したうえで、待ち牌を切る／切らない を選ぶ
-    const idx = chooseOpponentDiscard(
-      kindsOf(this.oppHand),
-      this.rng,
-      this.rules,
-      this.riichi ? (giveWin ? { prefer: waits } : { avoid: waits }) : {},
-    );
-    const [d] = this.oppHand.splice(idx, 1);
-    this.oppRiver.push({ tile: d, riichi: false, tsumogiri: d.id === drawn.id });
+    this.oppRiver.push({ tile: d, riichi: false, tsumogiri: true });
     if (this.riichi) {
       this.ronTile = d;
       this.phase = 'ronDecision';
@@ -384,7 +371,7 @@ export class Game {
 
   private afterOpponent(): void {
     this.ronTile = null;
-    if (this.turn >= this.settings.maxTurns && this.oppTurn >= this.settings.maxTurns) {
+    if (this.turn >= this.maxTurns && this.oppTurn >= this.maxTurns) {
       this.finishRyuukyoku();
       return;
     }
@@ -494,27 +481,4 @@ export class Game {
     this.phase = 'opponentTurn';
     return true;
   }
-}
-
-/**
- * 相手の打牌：切った後の7枚がテンパイにならない牌を選ぶ（候補が複数ならランダム）。
- * prefer を渡すとその牌（プレイヤーの待ち牌）を優先して切り、avoid を渡すとできるだけ切らない。
- * どちらも「テンパイにならない」ことより優先はしない。
- */
-export function chooseOpponentDiscard(
-  hand8: readonly Kind[],
-  rng: Rng,
-  rules: RuleOptions,
-  opts: { prefer?: ReadonlySet<Kind>; avoid?: ReadonlySet<Kind> } = {},
-): number {
-  const candidates: number[] = [];
-  hand8.forEach((_, i) => {
-    const rest = [...hand8.slice(0, i), ...hand8.slice(i + 1)];
-    if (waitKinds(rest, rules).length === 0) candidates.push(i);
-  });
-  let pool = candidates.length ? candidates : hand8.map((_, i) => i);
-  const { prefer, avoid } = opts;
-  const narrowed = prefer ? pool.filter((i) => prefer.has(hand8[i])) : avoid ? pool.filter((i) => !avoid.has(hand8[i])) : pool;
-  if (narrowed.length) pool = narrowed;
-  return pool[Math.floor(rng() * pool.length)];
 }

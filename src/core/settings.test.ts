@@ -8,6 +8,7 @@ import {
   firstTurnSeconds,
   normalizeSettings,
   rulesOf,
+  wallKindsOf,
 } from './settings';
 import { parseKinds as P } from './tiles';
 
@@ -50,6 +51,7 @@ describe('設定の復元', () => {
   it('壊れた値は範囲内に直す', () => {
     expect(normalizeSettings({ discardSeconds: 99, decisionSeconds: -3, maxTurns: 'x', allowHakuFifth: 'no' })).toEqual({
       handSize: 7,
+      suits: 3,
       discardSeconds: 60,
       decisionSeconds: 1,
       maxTurns: 18,
@@ -62,6 +64,17 @@ describe('設定の復元', () => {
     expect(normalizeSettings({ handSize: 13 }).handSize).toBe(13);
     expect(normalizeSettings({ handSize: 8 }).handSize).toBe(7);
     expect(normalizeSettings({ handSize: '13' }).handSize).toBe(7);
+  });
+  it('牌の色数は 1・2・3 のどれか（それ以外は3）', () => {
+    expect(normalizeSettings({ suits: 1 }).suits).toBe(1);
+    expect(normalizeSettings({ suits: 2 }).suits).toBe(2);
+    expect(normalizeSettings({ suits: 4 }).suits).toBe(3);
+    expect(normalizeSettings({}).suits).toBe(3);
+  });
+  it('色数ごとの山の種類：3色=萬筒索 / 2色=筒索 / 1色=筒子', () => {
+    expect(wallKindsOf(3)).toEqual(Array.from({ length: 27 }, (_, i) => i));
+    expect(wallKindsOf(2)).toEqual(Array.from({ length: 18 }, (_, i) => 9 + i));
+    expect(wallKindsOf(1)).toEqual(Array.from({ length: 9 }, (_, i) => 9 + i));
   });
   it('チートイツは13枚のときだけ', () => {
     expect(rulesOf({ ...DEFAULT_SETTINGS, handSize: 13 }).chiitoi).toBe(true);

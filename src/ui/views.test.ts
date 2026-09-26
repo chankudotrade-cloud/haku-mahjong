@@ -30,7 +30,7 @@ const game = (player6: string, first: string, maxTurns = 18) =>
   new Game({
     settings: { ...DEFAULT_SETTINGS, maxTurns },
     rng: mulberry32(3),
-    makeWall: () => wallFrom([...P(player6), ...P('1s1s4s7s1p5p9m'), ...P(first)]),
+    makeWall: () => wallFrom([...P(player6), ...P(first)]),
   });
 
 describe('牌画像', () => {

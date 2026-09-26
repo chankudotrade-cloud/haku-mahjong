@@ -10,6 +10,8 @@ export interface RuleOptions {
   allowHakuFifth: boolean;
   /** 14枚のときチートイツ（種類の違う対子7組）をアガリにするか */
   chiitoi?: boolean;
+  /** 山に入る牌の種類（待ちになりうる牌）。省略時は数牌27種 */
+  drawable?: readonly Kind[];
 }
 
 export const DEFAULT_RULES: RuleOptions = { allowHakuFifth: true, chiitoi: false };
@@ -171,6 +173,8 @@ export function isAgari(kinds: readonly Kind[], rules: RuleOptions = DEFAULT_RUL
   return decompose(kinds, rules).length > 0;
 }
 
+const ALL_DRAWABLE: Kind[] = Array.from({ length: WALL_KINDS }, (_, k) => k);
+
 /** テンパイ判定する手牌の枚数か（7・10・13枚） */
 export const isHandSize = (n: number) => isWinningSize(n + 1);
 
@@ -179,7 +183,7 @@ export function waitKinds(hand7: readonly Kind[], rules: RuleOptions = DEFAULT_R
   if (!isHandSize(hand7.length)) return [];
   const c = countKinds(hand7);
   const out: Kind[] = [];
-  for (let x = 0; x < WALL_KINDS; x++) {
+  for (const x of rules.drawable ?? ALL_DRAWABLE) {
     if (c[x] >= 4) continue;
     if (isAgari([...hand7, x], rules)) out.push(x);
   }

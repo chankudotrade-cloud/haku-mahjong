@@ -2,7 +2,7 @@
   "name": "haku-mahjong",
   "version": "1.0.0",
   "private": true,
-  "description": "白オールマイティ 2人麻雀（多面待ち練習ゲーム）",
+  "description": "1人用 白マイティ麻雀（1シャンテンに強くなるための練習ゲーム）",
   "type": "module",
   "scripts": {
     "dev": "vite",

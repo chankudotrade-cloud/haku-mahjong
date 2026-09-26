@@ -1,6 +1,6 @@
 import { Game } from '../core/game';
-import type { GameSettings } from '../core/settings';
-import { EMPTY_STATS, recordRound, type StatsBySize } from '../core/stats';
+import { modeKey, type GameSettings } from '../core/settings';
+import { EMPTY_STATS, recordRound, type StatsByMode } from '../core/stats';
 import { loadSettings, loadStats, saveSettings, saveStats } from '../storage';
 import { renderEndView } from './endView';
 import { renderGameView, updateTimerEl, type GameViewState } from './gameView';
@@ -13,7 +13,7 @@ const WARNING_MS = 1400;
 
 export class App {
   private settings: GameSettings = loadSettings();
-  private stats: StatsBySize = loadStats();
+  private stats: StatsByMode = loadStats();
   private game: Game | null = null;
   private warning = '';
   private timer: { deadline: number; total: number; label: string } | null = null;
@@ -43,17 +43,17 @@ export class App {
     this.clearTimers();
     this.game = null;
     this.mount(
-      renderOpeningView(this.settings, this.stats[this.settings.handSize], {
+      renderOpeningView(this.settings, this.stats[modeKey(this.settings)], {
         onStart: () => this.startGame(),
         onSettingsChange: (s) => {
-          const sizeChanged = s.handSize !== this.settings.handSize;
+          const modeChanged = modeKey(s) !== modeKey(this.settings);
           this.settings = s;
           saveSettings(s);
-          // 成績は枚数ごとなので、枚数を変えたら表示し直す
-          if (sizeChanged) this.showOpening();
+          // 成績は枚数×色数ごとなので、変えたら表示し直す
+          if (modeChanged) this.showOpening();
         },
         onResetStats: () => {
-          this.stats = { ...this.stats, [this.settings.handSize]: { ...EMPTY_STATS } };
+          this.stats = { ...this.stats, [modeKey(this.settings)]: { ...EMPTY_STATS } };
           saveStats(this.stats);
           this.showOpening();
         },
@@ -74,8 +74,8 @@ export class App {
     this.clearTimers();
     const g = this.game!;
     if (g.phase === 'ended') {
-      const n = g.settings.handSize;
-      this.stats = { ...this.stats, [n]: recordRound(this.stats[n], g.end!, g.log) };
+      const key = modeKey(g.settings);
+      this.stats = { ...this.stats, [key]: recordRound(this.stats[key], g.end!, g.log) };
       saveStats(this.stats);
       this.showEnd();
       return;

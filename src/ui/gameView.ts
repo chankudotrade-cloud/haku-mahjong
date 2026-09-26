@@ -140,7 +140,7 @@ const PASS_EXCLUDED = 'button, [data-hand] .tile, .topbar';
 export function renderGameView(g: Game, st: GameViewState, hd: GameHandlers): HTMLElement {
   const ronTile = g.phase === 'ronDecision' && g.ronTile ? g.ronTile : null;
   // 河は最初から最大段数分の高さをとり、捨て牌が増えても手牌が動かないようにする
-  const riverRows = Math.ceil(g.settings.maxTurns / RIVER_COLUMNS);
+  const riverRows = Math.ceil(g.maxTurns / RIVER_COLUMNS);
   const root = h(
     'div',
     {
@@ -151,14 +151,13 @@ export function renderGameView(g: Game, st: GameViewState, hd: GameHandlers): HT
     h(
       'div',
       { class: 'topbar' },
-      h('span', {}, `${g.turn}巡目 / ${g.settings.maxTurns}`),
+      h('span', {}, `${g.turn}巡目 / ${g.maxTurns}`),
       h('span', {}, `山 ${g.wall.length}`),
       h('button', { class: 'btn-link', onclick: () => hd.onQuit() }, 'タイトルへ'),
     ),
     h(
       'div',
       { class: 'opp-area' },
-      h('div', { class: 'opp-hand' }, g.oppHand.map((t) => tileEl(t.kind, { size: 'sm', back: true }))),
       riverEl(g.oppRiver, 'opp-river', !!ronTile),
     ),
     h(

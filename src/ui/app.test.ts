@@ -41,9 +41,10 @@ describe('App（画面遷移のスモークテスト）', () => {
 
     click([...root.querySelectorAll('button')].find((b) => b.textContent === '次の局へ')!);
     expect(root.querySelector('.game')).not.toBeNull();
-    const stats = JSON.parse(localStorage.getItem('haku-mahjong:stats-by-size')!);
-    expect(stats['7'].rounds).toBe(1);
-    expect(stats['10'].rounds).toBe(0);
+    const stats = JSON.parse(localStorage.getItem('haku-mahjong:stats-by-mode')!);
+    expect(stats['7-3'].rounds).toBe(1);
+    expect(stats['10-3'].rounds).toBe(0);
+    expect(stats['7-1'].rounds).toBe(0);
   });
 
   it('1巡目は15秒、2巡目以降は設定秒数で時間切れになる', () => {
@@ -75,12 +76,88 @@ describe('オープニングの手牌の枚数', () => {
     const root = document.createElement('div');
     new App(root).start();
     expect([...root.querySelectorAll('[data-hand-size]')].map((b) => b.textContent)).toEqual(['7枚', '10枚', '13枚']);
-    expect(root.querySelector('.stats summary')?.textContent).toBe('成績（7枚）');
+    expect(root.querySelector('.stats h2')?.textContent).toBe('成績（7枚・3色）');
     click(root.querySelector('[data-hand-size="13"]'));
     expect(root.querySelector('[data-hand-size="13"]')?.classList.contains('active')).toBe(true);
-    expect(root.querySelector('.stats summary')?.textContent).toBe('成績（13枚）');
+    expect(root.querySelector('.stats h2')?.textContent).toBe('成績（13枚・3色）');
     expect(JSON.parse(localStorage.getItem('haku-mahjong:settings')!).handSize).toBe(13);
     click(root.querySelector('.btn-start'));
     expect(root.querySelectorAll('[data-hand-index]')).toHaveLength(14);
+  });
+});
+
+describe('オープニングのタイトルとルール', () => {
+  it('タイトル・説明・ルールを表示する', () => {
+    const root = document.createElement('div');
+    new App(root).start();
+    expect(root.querySelector('.opening h1')?.textContent).toBe('1人用 白マイティ麻雀');
+    expect(root.querySelector('.tagline')?.textContent).toBe('1シャンテンに強くなるための練習ゲームです。');
+    expect([...root.querySelectorAll('.rules li')].map((li) => li.textContent)).toEqual([
+      '白はオールマイティです。',
+      '7枚・10枚はチートイツなし',
+      'テンパイしたら必ずリーチしてください',
+      '一番多い待ちを選んでください',
+      'フリテンリーチは禁止です',
+    ]);
+  });
+});
+
+describe('成績クリア', () => {
+  const stats = () => JSON.parse(localStorage.getItem('haku-mahjong:stats-by-mode') ?? '{}');
+  const seed = () =>
+    localStorage.setItem(
+      'haku-mahjong:stats-by-mode',
+      JSON.stringify({ '7-3': { rounds: 3, wins: 1 }, '10-3': { rounds: 2 }, '13-3': { rounds: 5 }, '10-1': { rounds: 6 } }),
+    );
+
+  it('成績は常に表示され、クリアボタンがある', () => {
+    seed();
+    const root = document.createElement('div');
+    new App(root).start();
+    expect(root.querySelector('details.stats')).toBeNull();
+    expect(root.querySelector('.stats dl')?.textContent).toContain('局数3');
+    expect(root.querySelector('[data-action="clear-stats"]')?.textContent).toBe('成績クリア（7枚・3色）');
+  });
+
+  it('確認でOKすると、選んでいる枚数の成績だけを消す', () => {
+    seed();
+    const root = document.createElement('div');
+    new App(root).start();
+    click(root.querySelector('[data-hand-size="10"]'));
+    vi.spyOn(window, 'confirm').mockReturnValue(true);
+    click(root.querySelector('[data-action="clear-stats"]'));
+    expect(stats()['10-3'].rounds).toBe(0);
+    expect(stats()['7-3'].rounds).toBe(3);
+    expect(stats()['13-3'].rounds).toBe(5);
+    expect(stats()['10-1'].rounds).toBe(6);
+    expect(root.querySelector('.stats dl')?.textContent).toContain('局数0');
+  });
+
+  it('確認でキャンセルすると消さない', () => {
+    seed();
+    const root = document.createElement('div');
+    new App(root).start();
+    vi.spyOn(window, 'confirm').mockReturnValue(false);
+    click(root.querySelector('[data-action="clear-stats"]'));
+    expect(root.querySelector('.stats dl')?.textContent).toContain('局数3');
+  });
+});
+
+describe('牌の数の選択', () => {
+  it('手牌の枚数の下に 1色・2色・3色 があり、初期値は3色。選ぶと保存され、成績の表示も切り替わる', () => {
+    const root = document.createElement('div');
+    new App(root).start();
+    const labels = [...root.querySelectorAll('.opening .size-select > span')].map((x) => x.textContent);
+    expect(labels).toEqual(['手牌の枚数', '牌の数']);
+    expect([...root.querySelectorAll('[data-suits]')].map((b) => b.textContent)).toEqual(['1色', '2色', '3色']);
+    expect(root.querySelector('[data-suits="3"]')?.classList.contains('active')).toBe(true);
+    click(root.querySelector('[data-suits="1"]'));
+    expect(JSON.parse(localStorage.getItem('haku-mahjong:settings')!).suits).toBe(1);
+    expect(root.querySelector('.stats h2')?.textContent).toBe('成績（7枚・1色）');
+    click(root.querySelector('.btn-start'));
+    // 1色は筒子のみ（相手の手牌の表示は無い）
+    const kinds = [...root.querySelectorAll('[data-hand] [data-kind]')].map((x) => Number(x.getAttribute('data-kind')));
+    expect(kinds.filter((k) => k !== 29).every((k) => k >= 9 && k <= 17)).toBe(true);
+    expect(root.querySelector('.opp-hand')).toBeNull();
   });
 });

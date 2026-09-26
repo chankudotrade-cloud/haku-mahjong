@@ -1,5 +1,5 @@
 import { describe, expect, it, vi } from 'vitest';
-import { Game, chooseOpponentDiscard } from './game';
+import { Game } from './game';
 import { waitKinds } from './hand';
 import { DEFAULT_SETTINGS, type GameSettings } from './settings';
 import { HAKU, buildWallKinds, mulberry32, parseKinds as P, removeOne, type Kind, type Tile } from './tiles';
@@ -11,13 +11,12 @@ function wallFrom(front: Kind[]): Kind[] {
   return [...front, ...rest];
 }
 
-/** プレイヤー6枚・相手7枚・ツモ順 を指定して局を作る */
+/** プレイヤーの配牌・第1ツモ・以降のツモ順（相手→自分→…）を指定して局を作る */
 function makeGame(player6: string, first: string, opts: Partial<GameSettings> = {}, draws = ''): Game {
-  const opp7 = P('1s1s4s7s1p5p9m'); // 相手はテンパイしない形
   return new Game({
     settings: { ...DEFAULT_SETTINGS, ...opts },
     rng: mulberry32(1),
-    makeWall: () => wallFrom([...P(player6), ...opp7, ...P(first), ...P(draws)]),
+    makeWall: () => wallFrom([...P(player6), ...P(first), ...P(draws)]),
   });
 }
 
@@ -31,16 +30,13 @@ function setHand(g: Game, kinds: string, drawnLast = true, river = '') {
 const tileOf = (g: Game, kind: Kind): Tile => g.hand.find((t) => t.kind === kind)!;
 
 describe('配牌', () => {
-  it('プレイヤーは6枚＋白、相手は7枚。白は必ず1枚', () => {
+  it('プレイヤーは6枚＋白（白は必ず1枚）。相手は手牌を持たない', () => {
     const g = new Game({ settings: DEFAULT_SETTINGS, rng: mulberry32(42) });
     expect(g.hand).toHaveLength(8);
     expect(g.handKinds.filter((k) => k === HAKU)).toHaveLength(1);
-    expect(g.oppHand).toHaveLength(7);
-    expect(g.oppHand.some((t) => t.kind === HAKU)).toBe(false);
     expect(g.wall.some((t) => t.kind === HAKU)).toBe(false);
-    expect(g.wall.length + 14).toBe(108);
+    expect(g.wall.length + 7).toBe(108);
     expect(g.wall.some((t) => t.kind >= 27)).toBe(false); // 字牌は山に無い
-    expect(g.oppHand.some((t) => t.kind >= 27)).toBe(false);
     expect(g.turn).toBe(1);
     expect(g.phase).toBe('playerDiscard');
   });
@@ -51,18 +47,9 @@ describe('配牌', () => {
     expect(g.drawnId).toBe(g.hand[7].id);
   });
 
-  it('相手の配牌がテンパイなら配り直す', () => {
-    const oppTenpai = wallFrom([...P('123m45m9p'), ...P('123s456s9s'), ...P('3s')]);
-    const normal = wallFrom([...P('123m45m9p'), ...P('1s1s4s7s1p5p9m'), ...P('3s')]);
-    const makeWall = vi.fn().mockReturnValueOnce(oppTenpai).mockReturnValueOnce(normal);
-    const g = new Game({ settings: DEFAULT_SETTINGS, rng: mulberry32(1), makeWall });
-    expect(g.dealCount).toBe(2);
-    expect(waitKinds(g.oppHand.map((t) => t.kind))).toEqual([]);
-  });
-
   it('配牌＋第1ツモがアガリ形なら配り直す', () => {
-    const agari = wallFrom([...P('123m456m'), ...P('1s1s4s7s1p5p9m'), ...P('9p')]);
-    const normal = wallFrom([...P('123m45m9p'), ...P('1s1s4s7s1p5p9m'), ...P('3s')]);
+    const agari = wallFrom([...P('123m456m'), ...P('9p')]);
+    const normal = wallFrom([...P('123m45m9p'), ...P('3s')]);
     const makeWall = vi.fn().mockReturnValueOnce(agari).mockReturnValueOnce(normal);
     const g = new Game({ settings: DEFAULT_SETTINGS, rng: mulberry32(1), makeWall });
     expect(makeWall).toHaveBeenCalledTimes(2);
@@ -423,8 +410,8 @@ describe('リーチ後のアガリ牌の確率（ロン25%・ツモ25%）', () =
       g.advanceOpponent();
       expect(g.phase).toBe('ronDecision');
       if (WAITS.has(g.ronTile!.kind)) hits++;
-      // 相手はテンパイしない
-      expect(waitKinds(g.oppHand.map((t) => t.kind))).toEqual([]);
+      // 相手は山から引いた牌をそのまま捨てる
+      expect(g.oppRiver.at(-1)?.tsumogiri).toBe(true);
     }
     expect(hits / N).toBeGreaterThan(0.22);
     expect(hits / N).toBeLessThan(0.28);
@@ -454,11 +441,10 @@ describe('リーチ後のアガリ牌の確率（ロン25%・ツモ25%）', () =
     expect(g.handKinds.at(-1)).toBe(P('1p')[0]); // 相手が5索、自分が1筒（並びどおり）
   });
 
-  it('待ち牌が山にも相手の手にも無ければアガリ牌は出ない', () => {
+  it('待ち牌が山に無ければアガリ牌は出ない', () => {
     for (let seed = 1; seed <= 200; seed++) {
       const g = riichiWithSeed(seed);
       g.wall = g.wall.filter((t) => !WAITS.has(t.kind));
-      g.oppHand = P('1s1s4s7s1p5p9m').map((kind) => ({ id: nextId++, kind }));
       g.advanceOpponent();
       expect(WAITS.has(g.ronTile!.kind)).toBe(false);
     }
@@ -487,24 +473,69 @@ describe('流局', () => {
 });
 
 describe('相手の打牌', () => {
-  it('テンパイにならない牌を選ぶ', () => {
-    const hand8 = P('12m456p99s5s'); // 5索を切ると 3萬待ちのテンパイになる
-    expect(hand8).toHaveLength(8);
-    for (let seed = 1; seed < 30; seed++) {
-      const i = chooseOpponentDiscard(hand8, mulberry32(seed), DEFAULT_SETTINGS);
-      expect(waitKinds(removeOne(hand8, hand8[i]))).toEqual([]);
+  it('相手は手牌を持たず、山の先頭をそのまま捨てる（リーチ前）', () => {
+    const g = makeGame('1m2m3m4m7p9p', '3s', {}, '5s1p8s');
+    g.discard(tileOf(g, P('7p')[0]).id);
+    g.advanceOpponent();
+    expect(g.oppRiver.map((r) => r.tile.kind)).toEqual(P('5s'));
+    expect(g.oppRiver[0].tsumogiri).toBe(true);
+  });
+});
+
+describe('牌の数（1色・2色・3色）', () => {
+  const kindsIn = (g: Game) => new Set([...g.wall.map((t) => t.kind), ...g.handKinds.filter((k) => k !== HAKU)]);
+
+  it('3色は萬筒索108枚、2色は筒索72枚（萬子抜き）、1色は筒子36枚', () => {
+    for (const [suits, total, min, max] of [
+      [3, 108, 0, 26],
+      [2, 72, 9, 26],
+      [1, 36, 9, 17],
+    ] as const) {
+      for (const n of [7, 10, 13] as const) {
+        const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: n, suits }, rng: mulberry32(n + suits) });
+        expect(g.wall.length + n).toBe(total);
+        for (const k of kindsIn(g)) {
+          expect(k).toBeGreaterThanOrEqual(min);
+          expect(k).toBeLessThanOrEqual(max);
+        }
+      }
     }
   });
 
-  it('局を通して相手はテンパイしない', () => {
-    const g = new Game({ settings: DEFAULT_SETTINGS, rng: mulberry32(7) });
-    g.discard(g.hand[0].kind === HAKU ? g.hand[1].id : g.hand[0].id);
-    while (g.phase === 'opponentTurn') {
-      g.advanceOpponent();
-      expect(waitKinds(g.oppHand.map((t) => t.kind))).toEqual([]);
-      if ((g.phase as string) !== 'playerDiscard') break;
-      g.timeout();
+  it('待ちは山にある種類だけ（1色は筒子9種、無限単騎も9種）', () => {
+    const g = new Game({ settings: { ...DEFAULT_SETTINGS, suits: 1 }, rng: mulberry32(3) });
+    expect(g.rules.drawable).toEqual(Array.from({ length: 9 }, (_, i) => 9 + i));
+    expect(waitKinds(P('123p456p5z'), g.rules)).toHaveLength(9);
+    expect(waitKinds(P('123p456p5z'))).toHaveLength(27);
+  });
+
+  it('山が足りなければ流局巡目を短くする（1色13枚は各自12巡、7枚は15巡）', () => {
+    const g13 = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13, suits: 1 }, rng: mulberry32(1) });
+    expect(g13.wall.length).toBe(23);
+    expect(g13.maxTurns).toBe(12);
+    const g7 = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 7, suits: 1 }, rng: mulberry32(1) });
+    expect(g7.maxTurns).toBe(15);
+    const g3 = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13, suits: 3 }, rng: mulberry32(1) });
+    expect(g3.maxTurns).toBe(18);
+  });
+
+  it('1色13枚でも時間切れだけで流局まで進み、山を使い切る前に止まる', () => {
+    for (let seed = 1; seed <= 20; seed++) {
+      const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13, suits: 1 }, rng: mulberry32(seed) });
+      let guard = 0;
+      while (g.phase !== 'ended' && guard++ < 200) {
+        if (g.phase === 'opponentTurn') g.advanceOpponent();
+        else g.timeout();
+      }
+      expect(g.phase).toBe('ended');
+      expect(g.turn).toBeLessThanOrEqual(g.maxTurns);
     }
+  });
+
+  it('最終巡（短くした巡数）はリーチできない', () => {
+    const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: 13, suits: 1 }, rng: mulberry32(1) });
+    g.turn = g.maxTurns;
+    expect(g.canDeclareRiichi).toBe(false);
   });
 });
 
@@ -514,9 +545,7 @@ describe('手牌の枚数（7・10・13）', () => {
       const g = new Game({ settings: { ...DEFAULT_SETTINGS, handSize: n }, rng: mulberry32(5) });
       expect(g.hand).toHaveLength(n + 1);
       expect(g.handKinds.filter((k) => k === HAKU)).toHaveLength(1);
-      expect(g.oppHand).toHaveLength(n);
-      expect(g.wall.length).toBe(108 - 2 * n);
-      expect(waitKinds(g.oppHand.map((t) => t.kind), g.rules)).toEqual([]);
+      expect(g.wall.length).toBe(108 - n);
     });
 
     it(`${n}枚：時間切れだけで局を最後まで進められる`, () => {

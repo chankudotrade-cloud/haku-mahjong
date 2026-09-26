@@ -14,9 +14,22 @@ export const TSUMO_CHANCE = 0.25;
 export const HAND_SIZES = [7, 10, 13] as const;
 export type HandSize = (typeof HAND_SIZES)[number];
 
+/** 選べる牌の色数。3色=萬筒索 / 2色=筒索（萬子抜き） / 1色=筒子のみ */
+export const SUIT_COUNTS = [1, 2, 3] as const;
+export type SuitCount = (typeof SUIT_COUNTS)[number];
+
+/** 色数ごとに山へ入る牌の種類（萬子0-8・筒子9-17・索子18-26） */
+export function wallKindsOf(suits: SuitCount): Kind[] {
+  const from = suits === 3 ? 0 : 9;
+  const to = suits === 1 ? 18 : 27;
+  return Array.from({ length: to - from }, (_, i) => from + i);
+}
+
 export interface GameSettings {
   /** 手牌の枚数（7・10・13）。13枚のときはチートイツもアガリ */
   handSize: HandSize;
+  /** 牌の色数（1・2・3） */
+  suits: SuitCount;
   /** リーチ前の打牌秒数 */
   discardSeconds: number;
   /** リーチ後の判断秒数 */
@@ -29,6 +42,7 @@ export interface GameSettings {
 
 export const DEFAULT_SETTINGS: GameSettings = {
   handSize: 7,
+  suits: 3,
   discardSeconds: DISCARD_SECONDS.default,
   decisionSeconds: DECISION_SECONDS.default,
   maxTurns: MAX_TURNS.default,
@@ -51,6 +65,7 @@ export function normalizeSettings(raw: unknown): GameSettings {
   const o = (raw && typeof raw === 'object' ? raw : {}) as Record<string, unknown>;
   return {
     handSize: normalizeHandSize(o.handSize),
+    suits: (SUIT_COUNTS as readonly unknown[]).includes(o.suits) ? (o.suits as SuitCount) : DEFAULT_SETTINGS.suits,
     discardSeconds: clampDiscardSeconds(o.discardSeconds),
     decisionSeconds: clampDecisionSeconds(o.decisionSeconds),
     maxTurns: clampMaxTurns(o.maxTurns),
@@ -63,10 +78,13 @@ export function normalizeHandSize(v: unknown): HandSize {
   return (HAND_SIZES as readonly unknown[]).includes(v) ? (v as HandSize) : DEFAULT_SETTINGS.handSize;
 }
 
-/** 設定からアガリ判定のルールを作る（チートイツは13枚のときだけ） */
-export function rulesOf(s: GameSettings): { allowHakuFifth: boolean; chiitoi: boolean } {
-  return { allowHakuFifth: s.allowHakuFifth, chiitoi: s.handSize === 13 };
+/** 設定からアガリ判定のルールを作る（チートイツは13枚のときだけ。待ちは山にある種類だけ） */
+export function rulesOf(s: GameSettings): { allowHakuFifth: boolean; chiitoi: boolean; drawable: Kind[] } {
+  return { allowHakuFifth: s.allowHakuFifth, chiitoi: s.handSize === 13, drawable: wallKindsOf(s.suits) };
 }
+
+/** 成績を分ける単位（手牌の枚数×色数） */
+export const modeKey = (s: Pick<GameSettings, 'handSize' | 'suits'>) => `${s.handSize}-${s.suits}`;
 
 /** 1巡目は15秒（設定値が15秒より長ければ設定値） */
 export function firstTurnSeconds(discardSeconds: number): number {
