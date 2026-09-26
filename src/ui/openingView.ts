@@ -24,6 +24,8 @@ const RULES = [
   '一番多い待ちを選んでください',
   'フリテンリーチは禁止です',
   '役はありません',
+  'カンはできません',
+  '鳴きはできません',
 ];
 
 export interface OpeningHandlers {
