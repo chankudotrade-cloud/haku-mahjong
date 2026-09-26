@@ -23,6 +23,7 @@ const RULES = [
   'テンパイしたら必ずリーチしてください',
   '一番多い待ちを選んでください',
   'フリテンリーチは禁止です',
+  '役はありません',
 ];
 
 export interface OpeningHandlers {
